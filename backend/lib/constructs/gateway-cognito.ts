@@ -55,6 +55,7 @@ export class GatewayCognitoConstruct extends Construct {
   public readonly preTokenLambda: lambda.Function;
   public readonly discoveryUrl: string;
   public readonly domainPrefix: string;
+  public readonly resourceServerId: string;
 
   constructor(
     scope: Construct,
@@ -66,7 +67,12 @@ export class GatewayCognitoConstruct extends Construct {
     const { uniqueId, targetName, testUsers, callbackUrls, logoutUrls } = props;
     const stack = cdk.Stack.of(this);
 
+    // Resource Server ID（スコープの識別子として使用）
+    // Cedar Policy で完全一致に使用するためエクスポート
+    this.resourceServerId = `gateway-interceptor-id-${uniqueId}`;
+
     // Pre Token Generation Lambda
+    // Adds custom claims (role, allowed_tools) to tokens for AgentCore Policy evaluation
     this.preTokenLambda = new lambda.Function(this, "PreTokenGeneration", {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "index.lambda_handler",
@@ -75,7 +81,6 @@ export class GatewayCognitoConstruct extends Construct {
       ),
       timeout: cdk.Duration.seconds(10),
       environment: {
-        RESOURCE_SERVER_ID: `gateway-interceptor-id-${uniqueId}`,
         TARGET_NAME: targetName,
       },
     });
@@ -88,7 +93,7 @@ export class GatewayCognitoConstruct extends Construct {
       autoVerify: { email: false },
     });
 
-    // V2_0 トリガーを使用して scopesToAdd を有効化
+    // V2_0 トリガーを使用して claimsToAddOrOverride を有効化
     this.userPool.addTrigger(
       cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
       this.preTokenLambda,
@@ -110,7 +115,7 @@ export class GatewayCognitoConstruct extends Construct {
       "ResourceServer",
       {
         userPool: this.userPool,
-        identifier: `gateway-interceptor-id-${uniqueId}`,
+        identifier: this.resourceServerId,
       }
     );
 

@@ -214,6 +214,8 @@ def handle_oauth_callback():
         # Extract user info from tokens
         id_claims = decode_token(tokens["id_token"])
         access_claims = decode_token(tokens["access_token"])
+        print(id_claims)
+        print(access_claims)
         st.session_state.user_info = {
             "email": id_claims.get("email"),
             "scope": access_claims.get("scope"),
@@ -264,11 +266,11 @@ def render_user_info():
     user_info = st.session_state.user_info or {}
     st.markdown(f"**Email:** {user_info.get('email', 'N/A')}")
 
-    # scope = user_info.get("scope", "")
-    # if scope:
-    #     st.markdown("**Scopes:**")
-    #     for s in scope.split():
-    #         st.markdown(f"- `{s}`")
+    scope = user_info.get("scope", "")
+    if scope:
+        st.markdown("**Scopes:**")
+        for s in scope.split():
+            st.markdown(f"- `{s}`")
 
 
 def render_tools_list():

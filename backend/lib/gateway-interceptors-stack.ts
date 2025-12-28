@@ -3,28 +3,32 @@ import { Construct } from "constructs";
 import {
   GatewayCognitoConstruct,
   RuntimeCognitoConstruct,
-  InterceptorLambdaConstruct,
   AgentCoreRuntimeConstruct,
   AgentCoreGatewayConstruct,
+  AgentCorePolicyEngineConstruct,
+  AgentCorePolicyConstruct,
 } from "./constructs";
 
 /**
  * ============================================================================
- * GatewayInterceptorStack
+ * GatewayPolicyStack (旧名: GatewayInterceptorStack)
  *
  * このスタックは以下のリソースを作成します：
  *
  * 1. Cognito User Pool (Gateway用・Runtime用)
- * 2. Lambda関数 (Request Interceptor・Response Interceptor)
- * 3. AgentCore Runtime (L2 Construct)
+ * 2. AgentCore Runtime (L2 Construct)
+ * 3. AgentCore Policy Engine (Custom Resource)
  * 4. AgentCore Gateway Role
- * 5. [Custom Resource] OAuth2 Credential Provider (AgenCore Identity) x 2
- *    - Gateway用 (inbound auth)
+ * 5. [Custom Resource] OAuth2 Credential Provider (AgenCore Identity)
  *    - Runtime用 (outbound auth - Gateway → Runtime)
- * 6. AgentCore Gateway with Interceptors (CfnGateway L1 Construct)
- *    - InterceptorConfigurations は型定義未対応のため addPropertyOverride で追加
+ * 6. AgentCore Gateway (CfnGateway L1 Construct)
  * 7. Gateway Target (CfnGatewayTarget L1 Construct)
  * 8. [Custom Resource] SynchronizeGatewayTargets
+ * 9. Cedar Policies (Custom Resources)
+ *    - Admin Policy: 全アクション許可（完全一致）
+ *    - User Policy: retrieve_doc のみ許可（完全一致）
+ *
+ * NOTE: Interceptor Lambda は削除され、AgentCore Policy で FGAC を実現
  *
  * ============================================================================
  */
@@ -33,12 +37,13 @@ export class GatewayInterceptorStack extends cdk.Stack {
   public readonly gatewayCognito: GatewayCognitoConstruct;
   public readonly runtimeCognito: RuntimeCognitoConstruct;
 
-  // Lambda
-  public readonly interceptorLambdas: InterceptorLambdaConstruct;
-
   // AgentCore
   public readonly agentCoreRuntime: AgentCoreRuntimeConstruct;
   public readonly agentCoreGateway: AgentCoreGatewayConstruct;
+
+  // Policy
+  public readonly agentCorePolicyEngine: AgentCorePolicyEngineConstruct;
+  public readonly agentCorePolicy: AgentCorePolicyConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -87,21 +92,6 @@ export class GatewayInterceptorStack extends cdk.Stack {
     );
 
     // ========================================
-    // Interceptor Lambdas Construct
-    // ========================================
-    this.interceptorLambdas = new InterceptorLambdaConstruct(
-      this,
-      "InterceptorLambdasGroup",
-      {
-        targetName,
-        resourceServerId:
-          this.gatewayCognito.resourceServer.userPoolResourceServerId,
-        jwksUrl: `https://cognito-idp.${this.region}.amazonaws.com/${this.gatewayCognito.userPool.userPoolId}/.well-known/jwks.json`,
-        clientId: this.gatewayCognito.userPoolClient.userPoolClientId,
-      }
-    );
-
-    // ========================================
     // AgentCore Runtime Construct
     // ========================================
     this.agentCoreRuntime = new AgentCoreRuntimeConstruct(
@@ -115,7 +105,20 @@ export class GatewayInterceptorStack extends cdk.Stack {
     );
 
     // ========================================
+    // AgentCore Policy Engine Construct
+    // NOTE: Gateway より先に作成する必要がある
+    // ========================================
+    this.agentCorePolicyEngine = new AgentCorePolicyEngineConstruct(
+      this,
+      "AgentCorePolicyEngineGroup",
+      {
+        uniqueId,
+      }
+    );
+
+    // ========================================
     // AgentCore Gateway Construct
+    // - Policy Engine を CreateGateway 時にアタッチ
     // ========================================
     this.agentCoreGateway = new AgentCoreGatewayConstruct(
       this,
@@ -129,10 +132,29 @@ export class GatewayInterceptorStack extends cdk.Stack {
         runtimeClientId: this.runtimeCognito.userPoolClient.userPoolClientId,
         runtimeClientSecret: this.runtimeCognito.clientSecret,
         runtimeScopeString: this.runtimeCognito.scopeString,
-        requestInterceptor: this.interceptorLambdas.requestInterceptor,
-        responseInterceptor: this.interceptorLambdas.responseInterceptor,
         runtime: this.agentCoreRuntime.runtime,
         mcpServerHash: this.agentCoreRuntime.mcpServerHash,
+        // Policy Engine 設定
+        policyEngineConfig: {
+          policyEngineArn: this.agentCorePolicyEngine.policyEngineArn,
+          mode: "ENFORCE",
+        },
+      }
+    );
+
+    // ========================================
+    // AgentCore Policy Construct (Cedar Policies)
+    // - Gateway ARN を使用するため、Gateway 作成後に実行
+    // - カスタムクレーム (role) を使用してロールベースのアクセス制御
+    // ========================================
+    this.agentCorePolicy = new AgentCorePolicyConstruct(
+      this,
+      "AgentCorePolicyGroup",
+      {
+        uniqueId,
+        policyEngineId: this.agentCorePolicyEngine.policyEngineId,
+        gatewayArn: this.agentCoreGateway.gatewayArn,
+        targetName,
       }
     );
 
@@ -145,19 +167,23 @@ export class GatewayInterceptorStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayUrl", {
       value: this.agentCoreGateway.gatewayUrl,
-      description: "AgentCore Gateway URL (Custom Resource)",
+      description: "AgentCore Gateway URL",
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayArn", {
       value: this.agentCoreGateway.gatewayArn,
-      description: "AgentCore Gateway ARN (Custom Resource)",
+      description: "AgentCore Gateway ARN",
     });
     new cdk.CfnOutput(this, "GatewayCognitoDomain", {
       value: this.gatewayCognito.domainPrefix,
-      description: "Gateway Cognito Domain Prefix (for streamlit_fgac_demo.py)",
+      description: "Gateway Cognito Domain Prefix (for streamlit app)",
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayTargetName", {
       value: targetName,
       description: "AgentCore Gateway Target Name",
+    });
+    new cdk.CfnOutput(this, "PolicyEngineArn", {
+      value: this.agentCorePolicyEngine.policyEngineArn,
+      description: "AgentCore Policy Engine ARN",
     });
   }
 }

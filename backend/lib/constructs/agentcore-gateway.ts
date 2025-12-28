@@ -1,6 +1,5 @@
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cr from "aws-cdk-lib/custom-resources";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as bedrockagentcore from "aws-cdk-lib/aws-bedrockagentcore";
@@ -9,6 +8,8 @@ import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
 
 /**
  * AgentCoreGatewayConstruct の Props
+ *
+ * NOTE: AgentCore Policy を使用するため、Interceptor Lambda は不要になりました
  */
 export interface AgentCoreGatewayConstructProps {
   /**
@@ -52,16 +53,6 @@ export interface AgentCoreGatewayConstructProps {
   readonly runtimeScopeString: string;
 
   /**
-   * Request Interceptor Lambda
-   */
-  readonly requestInterceptor: lambda.Function;
-
-  /**
-   * Response Interceptor Lambda
-   */
-  readonly responseInterceptor: lambda.Function;
-
-  /**
    * AgentCore Runtime
    */
   readonly runtime: agentcore.Runtime;
@@ -70,6 +61,23 @@ export interface AgentCoreGatewayConstructProps {
    * MCPサーバーのソースハッシュ（SyncGatewayTargets用）
    */
   readonly mcpServerHash: string;
+
+  /**
+   * Policy Engine 設定（オプション）
+   * 指定された場合、Gateway 作成時に Policy Engine をアタッチ
+   * NOTE: Cedar Policy は AgentCorePolicyConstruct で作成
+   */
+  readonly policyEngineConfig?: {
+    /**
+     * Policy Engine ARN
+     */
+    policyEngineArn: string;
+
+    /**
+     * Policy Engine のモード（デフォルト: ENFORCE）
+     */
+    mode?: "LOG_ONLY" | "ENFORCE";
+  };
 }
 
 /**
@@ -78,15 +86,20 @@ export interface AgentCoreGatewayConstructProps {
  * 以下のリソースを作成:
  * - AgentCore Gateway Role
  * - OAuth2 Credential Provider (Runtime用 AgentCore Identity)
- * - AgentCore Gateway (Custom Resource)
- * - Gateway Target (Custom Resource)
+ * - AgentCore Gateway (L1 Construct) with Policy Engine
+ * - Gateway Target (L1 Construct)
  * - Synchronize Gateway Targets (Custom Resource)
+ *
+ * NOTE: AgentCore Policy を使用するため、Interceptor は設定しません。
+ *       Policy Engine は CreateGateway 時に policyEngineConfiguration で設定します。
+ *       Cedar Policy は AgentCorePolicyConstruct で作成します。
  */
 export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayRole: iam.Role;
   public readonly gatewayId: string;
   public readonly gatewayUrl: string;
   public readonly gatewayArn: string;
+  public readonly gatewayName: string;
   public readonly runtimeOAuth2CredentialProviderArn: string;
 
   constructor(
@@ -105,10 +118,9 @@ export class AgentCoreGatewayConstruct extends Construct {
       runtimeClientId,
       runtimeClientSecret,
       runtimeScopeString,
-      requestInterceptor,
-      responseInterceptor,
       runtime,
       mcpServerHash,
+      policyEngineConfig,
     } = props;
 
     const stack = cdk.Stack.of(this);
@@ -138,6 +150,18 @@ export class AgentCoreGatewayConstruct extends Construct {
                 "iam:PassRole",
                 "secretsmanager:GetSecretValue",
                 "lambda:InvokeFunction",
+              ],
+              resources: ["*"],
+            }),
+            // Policy Engine トレースを CloudWatch Logs に記録するための権限
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
               ],
               resources: ["*"],
             }),
@@ -208,11 +232,13 @@ export class AgentCoreGatewayConstruct extends Construct {
       runtimeOAuth2Provider.getResponseField("credentialProviderArn");
 
     // Gateway の設定
-    const gatewayName = `gateway-interceptor-${uniqueId}`;
+    this.gatewayName = `gateway-policy-${uniqueId}`;
 
-    // AgentCore Gateway (L1 Construct)
-    const agentCoreGateway = new bedrockagentcore.CfnGateway(this, "Gateway", {
-      name: gatewayName,
+    // AgentCore Gateway (AwsCustomResource)
+    // NOTE: CloudFormation の AWS::BedrockAgentCore::Gateway は PolicyEngineConfiguration を
+    //       サポートしていないため、AwsCustomResource で CreateGateway API を直接呼び出す
+    const gatewayCreateParams: Record<string, unknown> = {
+      name: this.gatewayName,
       roleArn: this.gatewayRole.roleArn,
       protocolType: "MCP",
       protocolConfiguration: {
@@ -223,44 +249,65 @@ export class AgentCoreGatewayConstruct extends Construct {
       },
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
-        customJwtAuthorizer: {
+        customJWTAuthorizer: {
           discoveryUrl: gatewayDiscoveryUrl,
           allowedClients: [gatewayClientId],
         },
       },
       exceptionLevel: "DEBUG",
+    };
+
+    // Policy Engine 設定を追加（オプション）
+    if (policyEngineConfig) {
+      gatewayCreateParams.policyEngineConfiguration = {
+        arn: policyEngineConfig.policyEngineArn,
+        mode: policyEngineConfig.mode ?? "ENFORCE",
+      };
+    }
+
+    const gatewayUpdateParams: Record<string, unknown> = {
+      ...gatewayCreateParams,
+      gatewayIdentifier: new cr.PhysicalResourceIdReference(),
+    };
+
+    const agentCoreGateway = new cr.AwsCustomResource(this, "Gateway", {
+      onCreate: {
+        service: "bedrock-agentcore-control",
+        action: "CreateGateway",
+        parameters: gatewayCreateParams,
+        physicalResourceId: cr.PhysicalResourceId.fromResponse("gatewayId"),
+      },
+      onUpdate: {
+        service: "bedrock-agentcore-control",
+        action: "UpdateGateway",
+        parameters: gatewayUpdateParams,
+        physicalResourceId: cr.PhysicalResourceId.fromResponse("gatewayId"),
+      },
+      onDelete: {
+        service: "bedrock-agentcore-control",
+        action: "DeleteGateway",
+        parameters: {
+          gatewayIdentifier: new cr.PhysicalResourceIdReference(),
+        },
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ["bedrock-agentcore:*"],
+          resources: ["*"],
+        }),
+        // CreateGateway API は roleArn を渡すため iam:PassRole が必要
+        new iam.PolicyStatement({
+          actions: ["iam:PassRole"],
+          resources: [this.gatewayRole.roleArn],
+        }),
+      ]),
+      logRetention: logs.RetentionDays.ONE_WEEK,
+      timeout: cdk.Duration.minutes(5),
     });
 
-    // InterceptorConfigurations は現在の aws-cdk-lib の型定義に含まれていないため
-    // addPropertyOverride を使用して追加
-    agentCoreGateway.addPropertyOverride("InterceptorConfigurations", [
-      {
-        Interceptor: {
-          Lambda: {
-            Arn: requestInterceptor.functionArn,
-          },
-        },
-        InterceptionPoints: ["REQUEST"],
-        InputConfiguration: {
-          PassRequestHeaders: true,
-        },
-      },
-      {
-        Interceptor: {
-          Lambda: {
-            Arn: responseInterceptor.functionArn,
-          },
-        },
-        InterceptionPoints: ["RESPONSE"],
-        InputConfiguration: {
-          PassRequestHeaders: false,
-        },
-      },
-    ]);
-
-    this.gatewayId = agentCoreGateway.attrGatewayIdentifier;
-    this.gatewayUrl = agentCoreGateway.attrGatewayUrl;
-    this.gatewayArn = agentCoreGateway.attrGatewayArn;
+    this.gatewayId = agentCoreGateway.getResponseField("gatewayId");
+    this.gatewayUrl = agentCoreGateway.getResponseField("gatewayUrl");
+    this.gatewayArn = agentCoreGateway.getResponseField("gatewayArn");
 
     // Runtime ARN を encoded URL形式に変換
     const encodedRuntimeArn = cdk.Fn.join("", [
@@ -283,7 +330,7 @@ export class AgentCoreGatewayConstruct extends Construct {
       "GatewayTarget",
       {
         name: targetName,
-        gatewayIdentifier: agentCoreGateway.attrGatewayIdentifier,
+        gatewayIdentifier: this.gatewayId,
         targetConfiguration: {
           mcp: {
             mcpServer: {
@@ -319,7 +366,7 @@ export class AgentCoreGatewayConstruct extends Construct {
           service: "bedrock-agentcore-control",
           action: "SynchronizeGatewayTargets",
           parameters: {
-            gatewayIdentifier: agentCoreGateway.attrGatewayIdentifier,
+            gatewayIdentifier: this.gatewayId,
             targetIdList: [gatewayTarget.attrTargetId],
           },
           physicalResourceId: cr.PhysicalResourceId.of(
@@ -330,7 +377,7 @@ export class AgentCoreGatewayConstruct extends Construct {
           service: "bedrock-agentcore-control",
           action: "SynchronizeGatewayTargets",
           parameters: {
-            gatewayIdentifier: agentCoreGateway.attrGatewayIdentifier,
+            gatewayIdentifier: this.gatewayId,
             targetIdList: [gatewayTarget.attrTargetId],
           },
           physicalResourceId: cr.PhysicalResourceId.of(

@@ -1,3 +1,11 @@
+"""
+RAG Operations MCP Server
+
+AgentCore Policy による Fine-grained access control のデモ:
+- retrieve_doc: 一般ユーザー（user）もアクセス可能
+- delete_data_source, sync_data_source, get_query_log: 管理者（admin）のみ
+"""
+
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
