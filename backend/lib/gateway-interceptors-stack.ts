@@ -144,7 +144,8 @@ export class GatewayInterceptorStack extends cdk.Stack {
 
     // ========================================
     // AgentCore Policy Construct (Cedar Policies)
-    // - Gateway ARN を使用するため、Gateway 作成後に実行
+    // - Gateway Target 作成完了後に実行
+    //   (CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが登録される)
     // - カスタムクレーム (role) を使用してロールベースのアクセス制御
     // ========================================
     this.agentCorePolicy = new AgentCorePolicyConstruct(
@@ -155,6 +156,9 @@ export class GatewayInterceptorStack extends cdk.Stack {
         policyEngineId: this.agentCorePolicyEngine.policyEngineId,
         gatewayArn: this.agentCoreGateway.gatewayArn,
         targetName,
+        // Gateway Target 作成完了後にポリシー作成
+        // NOTE: CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
+        dependsOn: this.agentCoreGateway.gatewayTarget,
       }
     );
 

@@ -3,7 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import { GatewayInterceptorStack } from "../lib/gateway-interceptors-stack";
 
 const app = new cdk.App();
-new GatewayInterceptorStack(app, "AgentCorePolicyStack3", {
+new GatewayInterceptorStack(app, "AgentCorePolicyStack6", {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,

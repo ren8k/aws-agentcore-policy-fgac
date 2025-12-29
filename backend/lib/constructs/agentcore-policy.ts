@@ -25,9 +25,16 @@ export interface AgentCorePolicyConstructProps {
 
   /**
    * Gateway Target 名（Cedar Policy の action に使用）
-   * アクション名形式: "{TargetName}__{ToolName}"
+   * アクション名形式: "{TargetName}___{ToolName}"
    */
   readonly targetName: string;
+
+  /**
+   * Policy 作成前に待機する依存リソース（オプション）
+   * 通常は Gateway Target (CfnGatewayTarget) の作成完了を待つために使用
+   * NOTE: CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
+   */
+  readonly dependsOn?: Construct;
 }
 
 /**
@@ -50,7 +57,7 @@ export class AgentCorePolicyConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { uniqueId, policyEngineId, gatewayArn, targetName } = props;
+    const { uniqueId, policyEngineId, gatewayArn, targetName, dependsOn } = props;
 
     const sanitizedUniqueId = uniqueId.replace(/-/g, "_");
 
@@ -76,8 +83,8 @@ export class AgentCorePolicyConstruct extends Construct {
       {
         name: `user_policy_${sanitizedUniqueId}`,
         description: "User: retrieve_doc のみ許可（role=user）",
-        // NOTE: MCP Target のアクション名形式は "{TargetName}___{ToolName}" (トリプルアンダースコア)
-        //       action == を使用して特定アクションのみ許可
+        // NOTE: Gateway Target 作成完了後にポリシー作成されるため、アクション名を直接指定可能
+        //       (CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが登録される)
         cedarStatement: `permit(
   principal is AgentCore::OAuthUser,
   action == AgentCore::Action::"${targetName}___retrieve_doc",
@@ -91,7 +98,7 @@ export class AgentCorePolicyConstruct extends Construct {
 
     // 各ポリシーを作成
     policies.forEach((policyDef, index) => {
-      new cr.AwsCustomResource(
+      const policyResource = new cr.AwsCustomResource(
         this,
         `Policy_${index === 0 ? "admin" : "user"}`,
         {
@@ -145,6 +152,11 @@ export class AgentCorePolicyConstruct extends Construct {
           timeout: cdk.Duration.minutes(5),
         }
       );
+
+      // Gateway Target 作成完了後にポリシーを作成（暗黙的同期でツールスキーマが登録される）
+      if (dependsOn) {
+        policyResource.node.addDependency(dependsOn);
+      }
     });
   }
 }

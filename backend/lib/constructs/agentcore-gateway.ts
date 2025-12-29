@@ -101,6 +101,17 @@ export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayArn: string;
   public readonly gatewayName: string;
   public readonly runtimeOAuth2CredentialProviderArn: string;
+  /**
+   * Gateway Target (CfnGatewayTarget)
+   * CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
+   * Policy 作成時に依存関係を設定するために公開
+   */
+  public readonly gatewayTarget: bedrockagentcore.CfnGatewayTarget;
+  /**
+   * SyncGatewayTargets Custom Resource
+   * MCP サーバーのツール定義が変更された場合に明示的な同期を行う
+   */
+  public readonly syncGatewayTargets: cr.AwsCustomResource;
 
   constructor(
     scope: Construct,
@@ -325,7 +336,9 @@ export class AgentCoreGatewayConstruct extends Construct {
     ]);
 
     // Gateway Target (L1 Construct)
-    const gatewayTarget = new bedrockagentcore.CfnGatewayTarget(
+    // NOTE: CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
+    //       READY 状態のターゲットはすぐに使用可能
+    this.gatewayTarget = new bedrockagentcore.CfnGatewayTarget(
       this,
       "GatewayTarget",
       {
@@ -355,30 +368,20 @@ export class AgentCoreGatewayConstruct extends Construct {
     );
 
     // Synchronize Gateway Targets
-    // SynchronizeGatewayTargets API には対応する CloudFormation リソースがないため
-    // AwsCustomResource を使用
-    const syncGatewayTargets = new cr.AwsCustomResource(
+    // NOTE: CreateGatewayTarget 時に暗黙的な同期が行われるため、onCreate は不要
+    //       MCP サーバーのツール定義が変更された場合（mcpServerHash 変更時）に onUpdate で明示的な同期を行う
+    this.syncGatewayTargets = new cr.AwsCustomResource(
       this,
       "SyncGatewayTargets",
       {
         installLatestAwsSdk: true,
-        onCreate: {
-          service: "bedrock-agentcore-control",
-          action: "SynchronizeGatewayTargets",
-          parameters: {
-            gatewayIdentifier: this.gatewayId,
-            targetIdList: [gatewayTarget.attrTargetId],
-          },
-          physicalResourceId: cr.PhysicalResourceId.of(
-            `SyncGatewayTargets-${uniqueId}-${mcpServerHash}`
-          ),
-        },
+        // onCreate は不要（CreateGatewayTarget 時に暗黙的同期が行われる）
         onUpdate: {
           service: "bedrock-agentcore-control",
           action: "SynchronizeGatewayTargets",
           parameters: {
             gatewayIdentifier: this.gatewayId,
-            targetIdList: [gatewayTarget.attrTargetId],
+            targetIdList: [this.gatewayTarget.attrTargetId],
           },
           physicalResourceId: cr.PhysicalResourceId.of(
             `SyncGatewayTargets-${uniqueId}-${mcpServerHash}`
@@ -396,6 +399,6 @@ export class AgentCoreGatewayConstruct extends Construct {
     );
 
     // SyncGatewayTargets は GatewayTarget の作成完了を待つ必要がある
-    syncGatewayTargets.node.addDependency(gatewayTarget);
+    this.syncGatewayTargets.node.addDependency(this.gatewayTarget);
   }
 }
