@@ -2,6 +2,7 @@
 export * from "./gateway-cognito";
 export * from "./runtime-cognito";
 export * from "./agentcore-runtime";
+export * from "./agentcore-identity";
 export * from "./agentcore-gateway";
 export * from "./agentcore-policy-engine";
 export * from "./agentcore-policy";

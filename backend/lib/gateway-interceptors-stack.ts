@@ -4,6 +4,7 @@ import {
   GatewayCognitoConstruct,
   RuntimeCognitoConstruct,
   AgentCoreRuntimeConstruct,
+  AgentCoreIdentityConstruct,
   AgentCoreGatewayConstruct,
   AgentCorePolicyEngineConstruct,
   AgentCorePolicyConstruct,
@@ -18,15 +19,15 @@ import {
  * 1. Cognito User Pool (Gateway用・Runtime用)
  * 2. AgentCore Runtime (L2 Construct)
  * 3. AgentCore Policy Engine (Custom Resource)
- * 4. AgentCore Gateway Role
- * 5. [Custom Resource] OAuth2 Credential Provider (AgenCore Identity)
+ * 4. AgentCore Identity (OAuth2 Credential Provider)
  *    - Runtime用 (outbound auth - Gateway → Runtime)
- * 6. AgentCore Gateway (CfnGateway L1 Construct)
+ * 5. AgentCore Gateway Role
+ * 6. AgentCore Gateway (Custom Resource - PolicyEngineConfiguration サポート)
  * 7. Gateway Target (CfnGatewayTarget L1 Construct)
- * 8. [Custom Resource] SynchronizeGatewayTargets
+ * 8. [Custom Resource] SynchronizeGatewayTargets (onUpdate のみ)
  * 9. Cedar Policies (Custom Resources)
- *    - Admin Policy: 全アクション許可（完全一致）
- *    - User Policy: retrieve_doc のみ許可（完全一致）
+ *    - Admin Policy: 全アクション許可（role=admin）
+ *    - User Policy: retrieve_doc のみ許可（role=user）
  *
  * NOTE: Interceptor Lambda は削除され、AgentCore Policy で FGAC を実現
  *
@@ -39,6 +40,7 @@ export class GatewayInterceptorStack extends cdk.Stack {
 
   // AgentCore
   public readonly agentCoreRuntime: AgentCoreRuntimeConstruct;
+  public readonly agentCoreIdentity: AgentCoreIdentityConstruct;
   public readonly agentCoreGateway: AgentCoreGatewayConstruct;
 
   // Policy
@@ -117,6 +119,22 @@ export class GatewayInterceptorStack extends cdk.Stack {
     );
 
     // ========================================
+    // AgentCore Identity Construct (OAuth2 Credential Provider)
+    // - Runtime への認証に使用
+    // ========================================
+    this.agentCoreIdentity = new AgentCoreIdentityConstruct(
+      this,
+      "AgentCoreIdentityGroup",
+      {
+        uniqueId,
+        namePrefix: "runtime-oauth2-provider",
+        discoveryUrl: this.runtimeCognito.discoveryUrl,
+        clientId: this.runtimeCognito.userPoolClient.userPoolClientId,
+        clientSecret: this.runtimeCognito.clientSecret,
+      }
+    );
+
+    // ========================================
     // AgentCore Gateway Construct
     // - Policy Engine を CreateGateway 時にアタッチ
     // ========================================
@@ -128,9 +146,8 @@ export class GatewayInterceptorStack extends cdk.Stack {
         targetName,
         gatewayDiscoveryUrl: this.gatewayCognito.discoveryUrl,
         gatewayClientId: this.gatewayCognito.userPoolClient.userPoolClientId,
-        runtimeDiscoveryUrl: this.runtimeCognito.discoveryUrl,
-        runtimeClientId: this.runtimeCognito.userPoolClient.userPoolClientId,
-        runtimeClientSecret: this.runtimeCognito.clientSecret,
+        runtimeOAuth2CredentialProviderArn:
+          this.agentCoreIdentity.credentialProviderArn,
         runtimeScopeString: this.runtimeCognito.scopeString,
         runtime: this.agentCoreRuntime.runtime,
         mcpServerHash: this.agentCoreRuntime.mcpServerHash,

@@ -33,19 +33,10 @@ export interface AgentCoreGatewayConstructProps {
   readonly gatewayClientId: string;
 
   /**
-   * Runtime認証用の Discovery URL
+   * Runtime 認証用 OAuth2 Credential Provider ARN
+   * AgentCoreIdentityConstruct で作成された credentialProviderArn を指定
    */
-  readonly runtimeDiscoveryUrl: string;
-
-  /**
-   * Runtime認証用の Client ID
-   */
-  readonly runtimeClientId: string;
-
-  /**
-   * Runtime認証用の Client Secret
-   */
-  readonly runtimeClientSecret: string;
+  readonly runtimeOAuth2CredentialProviderArn: string;
 
   /**
    * Runtime のスコープ文字列
@@ -100,7 +91,6 @@ export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayUrl: string;
   public readonly gatewayArn: string;
   public readonly gatewayName: string;
-  public readonly runtimeOAuth2CredentialProviderArn: string;
   /**
    * Gateway Target (CfnGatewayTarget)
    * CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
@@ -125,9 +115,7 @@ export class AgentCoreGatewayConstruct extends Construct {
       targetName,
       gatewayDiscoveryUrl,
       gatewayClientId,
-      runtimeDiscoveryUrl,
-      runtimeClientId,
-      runtimeClientSecret,
+      runtimeOAuth2CredentialProviderArn,
       runtimeScopeString,
       runtime,
       mcpServerHash,
@@ -180,67 +168,6 @@ export class AgentCoreGatewayConstruct extends Construct {
         }),
       },
     });
-
-    // OAuth2 Credential Provider for Runtime (AgentCore Identity)
-    const runtimeOAuth2ProviderName = `runtime-oauth2-provider-${uniqueId}`;
-
-    const runtimeOAuth2ProviderConfigInput = {
-      customOauth2ProviderConfig: {
-        oauthDiscovery: {
-          discoveryUrl: runtimeDiscoveryUrl,
-        },
-        clientId: runtimeClientId,
-        clientSecret: runtimeClientSecret,
-      },
-    };
-
-    const runtimeOAuth2Provider = new cr.AwsCustomResource(
-      this,
-      "RuntimeOAuth2CredentialProvider",
-      {
-        onCreate: {
-          service: "bedrock-agentcore-control",
-          action: "CreateOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-            credentialProviderVendor: "CustomOauth2",
-            oauth2ProviderConfigInput: runtimeOAuth2ProviderConfigInput,
-          },
-          physicalResourceId: cr.PhysicalResourceId.fromResponse(
-            "credentialProviderArn"
-          ),
-        },
-        onUpdate: {
-          service: "bedrock-agentcore-control",
-          action: "UpdateOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-            credentialProviderVendor: "CustomOauth2",
-            oauth2ProviderConfigInput: runtimeOAuth2ProviderConfigInput,
-          },
-          physicalResourceId: cr.PhysicalResourceId.fromResponse(
-            "credentialProviderArn"
-          ),
-        },
-        onDelete: {
-          service: "bedrock-agentcore-control",
-          action: "DeleteOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-          },
-        },
-        policy: cr.AwsCustomResourcePolicy.fromStatements([
-          new iam.PolicyStatement({
-            actions: ["bedrock-agentcore:*", "secretsmanager:*"],
-            resources: ["*"],
-          }),
-        ]),
-        logRetention: logs.RetentionDays.ONE_WEEK,
-      }
-    );
-
-    this.runtimeOAuth2CredentialProviderArn =
-      runtimeOAuth2Provider.getResponseField("credentialProviderArn");
 
     // Gateway の設定
     this.gatewayName = `gateway-policy-${uniqueId}`;
@@ -356,9 +283,7 @@ export class AgentCoreGatewayConstruct extends Construct {
             credentialProviderType: "OAUTH",
             credentialProvider: {
               oauthCredentialProvider: {
-                providerArn: runtimeOAuth2Provider.getResponseField(
-                  "credentialProviderArn"
-                ),
+                providerArn: runtimeOAuth2CredentialProviderArn,
                 scopes: [runtimeScopeString],
               },
             },
