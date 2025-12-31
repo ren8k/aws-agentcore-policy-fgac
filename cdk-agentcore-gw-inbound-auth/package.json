@@ -1,8 +1,8 @@
 {
-  "name": "gateway-interceptors",
+  "name": "gateway-custom-claim",
   "version": "0.1.0",
   "bin": {
-    "gateway-interceptors": "bin/gateway-interceptors.js"
+    "gateway-custom-claim": "bin/gateway-custom-claim.js"
   },
   "scripts": {
     "build": "tsc",

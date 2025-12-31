@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
-import { GatewayInterceptorStack } from "../lib/gateway-interceptors-stack";
+import { GatewayInboundAuthCustomClaimStack } from "../lib/gateway-custom-claim-stack";
 
 const app = new cdk.App();
-new GatewayInterceptorStack(app, "AgentCoreCustomClaimsStack9", {
+new GatewayInboundAuthCustomClaimStack(app, "AgentCoreCustomClaimStack", {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,

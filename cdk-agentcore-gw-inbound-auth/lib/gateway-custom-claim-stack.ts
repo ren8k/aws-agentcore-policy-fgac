@@ -10,7 +10,7 @@ import {
 
 /**
  * ============================================================================
- * GatewayCustomClaimsStack
+ * GatewayInboundAuthCustomClaimsStack
  *
  * このスタックは以下のリソースを作成します：
  *
@@ -30,7 +30,7 @@ import {
  *
  * ============================================================================
  */
-export class GatewayInterceptorStack extends cdk.Stack {
+export class GatewayInboundAuthCustomClaimStack extends cdk.Stack {
   // Cognito
   public readonly gatewayCognito: GatewayCognitoConstruct;
   public readonly runtimeCognito: RuntimeCognitoConstruct;
@@ -146,8 +146,6 @@ export class GatewayInterceptorStack extends cdk.Stack {
             },
           },
         ],
-        // Policy Engine は使用しない
-        // policyEngineConfig: undefined,
       }
     );
 

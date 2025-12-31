@@ -9,9 +9,7 @@ import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
 /**
  * AgentCoreGatewayConstruct の Props
  *
- * アクセス制御には以下の2つの方式をサポート:
- * 1. customClaims: JWT の customClaims を使用した認可（シンプル）
- * 2. policyEngineConfig: Cedar Policy を使用した Fine-grained Access Control（高度）
+ * customClaims を使用した JWT ベースの認可をサポート
  */
 export interface AgentCoreGatewayConstructProps {
   /**
@@ -72,23 +70,6 @@ export interface AgentCoreGatewayConstructProps {
       };
     };
   }>;
-
-  /**
-   * Policy Engine 設定（オプション）
-   * 指定された場合、Gateway 作成時に Policy Engine をアタッチ
-   * NOTE: Cedar Policy は AgentCorePolicyConstruct で作成
-   */
-  readonly policyEngineConfig?: {
-    /**
-     * Policy Engine ARN
-     */
-    policyEngineArn: string;
-
-    /**
-     * Policy Engine のモード（デフォルト: ENFORCE）
-     */
-    mode?: "LOG_ONLY" | "ENFORCE";
-  };
 }
 
 /**
@@ -96,14 +77,11 @@ export interface AgentCoreGatewayConstructProps {
  *
  * 以下のリソースを作成:
  * - AgentCore Gateway Role
- * - OAuth2 Credential Provider (Runtime用 AgentCore Identity)
- * - AgentCore Gateway (L1 Construct) with Policy Engine
- * - Gateway Target (L1 Construct)
- * - Synchronize Gateway Targets (Custom Resource)
+ * - AgentCore Gateway (AwsCustomResource)
+ * - Gateway Target (CfnGatewayTarget)
+ * - Synchronize Gateway Targets (AwsCustomResource)
  *
- * NOTE: AgentCore Policy を使用するため、Interceptor は設定しません。
- *       Policy Engine は CreateGateway 時に policyEngineConfiguration で設定します。
- *       Cedar Policy は AgentCorePolicyConstruct で作成します。
+ * customClaims を使用した JWT ベースの認可をサポート
  */
 export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayRole: iam.Role;
@@ -113,8 +91,6 @@ export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayName: string;
   /**
    * Gateway Target (CfnGatewayTarget)
-   * CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
-   * Policy 作成時に依存関係を設定するために公開
    */
   public readonly gatewayTarget: bedrockagentcore.CfnGatewayTarget;
   /**
@@ -140,7 +116,6 @@ export class AgentCoreGatewayConstruct extends Construct {
       runtime,
       mcpServerHash,
       customClaims,
-      policyEngineConfig,
     } = props;
 
     const stack = cdk.Stack.of(this);
@@ -173,18 +148,6 @@ export class AgentCoreGatewayConstruct extends Construct {
               ],
               resources: ["*"],
             }),
-            // Policy Engine トレースを CloudWatch Logs に記録するための権限
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-                "logs:DescribeLogGroups",
-                "logs:DescribeLogStreams",
-              ],
-              resources: ["*"],
-            }),
           ],
         }),
       },
@@ -201,8 +164,6 @@ export class AgentCoreGatewayConstruct extends Construct {
     };
 
     // AgentCore Gateway (AwsCustomResource)
-    // NOTE: CloudFormation の AWS::BedrockAgentCore::Gateway は PolicyEngineConfiguration を
-    //       サポートしていないため、AwsCustomResource で CreateGateway API を直接呼び出す
     const gatewayCreateParams: Record<string, unknown> = {
       name: this.gatewayName,
       roleArn: this.gatewayRole.roleArn,
@@ -219,14 +180,6 @@ export class AgentCoreGatewayConstruct extends Construct {
       },
       exceptionLevel: "DEBUG",
     };
-
-    // Policy Engine 設定を追加（オプション）
-    if (policyEngineConfig) {
-      gatewayCreateParams.policyEngineConfiguration = {
-        arn: policyEngineConfig.policyEngineArn,
-        mode: policyEngineConfig.mode ?? "ENFORCE",
-      };
-    }
 
     const gatewayUpdateParams: Record<string, unknown> = {
       ...gatewayCreateParams,
@@ -287,9 +240,7 @@ export class AgentCoreGatewayConstruct extends Construct {
       "/invocations?qualifier=DEFAULT",
     ]);
 
-    // Gateway Target (L1 Construct)
-    // NOTE: CreateGatewayTarget 時に暗黙的な同期が行われ、ツールスキーマが Policy Engine に登録される
-    //       READY 状態のターゲットはすぐに使用可能
+    // Gateway Target (CfnGatewayTarget)
     this.gatewayTarget = new bedrockagentcore.CfnGatewayTarget(
       this,
       "GatewayTarget",
