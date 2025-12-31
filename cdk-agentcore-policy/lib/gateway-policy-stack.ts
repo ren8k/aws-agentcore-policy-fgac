@@ -12,7 +12,7 @@ import {
 
 /**
  * ============================================================================
- * GatewayPolicyStack (旧名: GatewayInterceptorStack)
+ * GatewayPolicyStack
  *
  * このスタックは以下のリソースを作成します：
  *
@@ -29,11 +29,10 @@ import {
  *    - Admin Policy: 全アクション許可（role=admin）
  *    - User Policy: retrieve_doc のみ許可（role=user）
  *
- * NOTE: Interceptor Lambda は削除され、AgentCore Policy で FGAC を実現
  *
  * ============================================================================
  */
-export class GatewayInterceptorStack extends cdk.Stack {
+export class GatewayPolicyStack extends cdk.Stack {
   // Cognito
   public readonly gatewayCognito: GatewayCognitoConstruct;
   public readonly runtimeCognito: RuntimeCognitoConstruct;
