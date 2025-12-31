@@ -5,6 +5,7 @@ import {
   RuntimeCognitoConstruct,
   InterceptorLambdaConstruct,
   AgentCoreRuntimeConstruct,
+  AgentCoreIdentityConstruct,
   AgentCoreGatewayConstruct,
 } from "./constructs";
 
@@ -17,10 +18,9 @@ import {
  * 1. Cognito User Pool (Gateway用・Runtime用)
  * 2. Lambda関数 (Request Interceptor・Response Interceptor)
  * 3. AgentCore Runtime (L2 Construct)
- * 4. AgentCore Gateway Role
- * 5. [Custom Resource] OAuth2 Credential Provider (AgenCore Identity) x 2
- *    - Gateway用 (inbound auth)
+ * 4. AgentCore Identity (OAuth2 Credential Provider)
  *    - Runtime用 (outbound auth - Gateway → Runtime)
+ * 5. AgentCore Gateway Role
  * 6. AgentCore Gateway with Interceptors (CfnGateway L1 Construct)
  *    - InterceptorConfigurations は型定義未対応のため addPropertyOverride で追加
  * 7. Gateway Target (CfnGatewayTarget L1 Construct)
@@ -38,6 +38,7 @@ export class GatewayInterceptorStack extends cdk.Stack {
 
   // AgentCore
   public readonly agentCoreRuntime: AgentCoreRuntimeConstruct;
+  public readonly agentCoreIdentity: AgentCoreIdentityConstruct;
   public readonly agentCoreGateway: AgentCoreGatewayConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -115,6 +116,22 @@ export class GatewayInterceptorStack extends cdk.Stack {
     );
 
     // ========================================
+    // AgentCore Identity Construct (OAuth2 Credential Provider)
+    // - Runtime への認証に使用
+    // ========================================
+    this.agentCoreIdentity = new AgentCoreIdentityConstruct(
+      this,
+      "AgentCoreIdentityGroup",
+      {
+        uniqueId,
+        namePrefix: "runtime-oauth2-provider",
+        discoveryUrl: this.runtimeCognito.discoveryUrl,
+        clientId: this.runtimeCognito.userPoolClient.userPoolClientId,
+        clientSecret: this.runtimeCognito.clientSecret,
+      }
+    );
+
+    // ========================================
     // AgentCore Gateway Construct
     // ========================================
     this.agentCoreGateway = new AgentCoreGatewayConstruct(
@@ -125,9 +142,8 @@ export class GatewayInterceptorStack extends cdk.Stack {
         targetName,
         gatewayDiscoveryUrl: this.gatewayCognito.discoveryUrl,
         gatewayClientId: this.gatewayCognito.userPoolClient.userPoolClientId,
-        runtimeDiscoveryUrl: this.runtimeCognito.discoveryUrl,
-        runtimeClientId: this.runtimeCognito.userPoolClient.userPoolClientId,
-        runtimeClientSecret: this.runtimeCognito.clientSecret,
+        runtimeOAuth2CredentialProviderArn:
+          this.agentCoreIdentity.credentialProviderArn,
         runtimeScopeString: this.runtimeCognito.scopeString,
         requestInterceptor: this.interceptorLambdas.requestInterceptor,
         responseInterceptor: this.interceptorLambdas.responseInterceptor,
@@ -145,15 +161,15 @@ export class GatewayInterceptorStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayUrl", {
       value: this.agentCoreGateway.gatewayUrl,
-      description: "AgentCore Gateway URL (Custom Resource)",
+      description: "AgentCore Gateway URL",
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayArn", {
       value: this.agentCoreGateway.gatewayArn,
-      description: "AgentCore Gateway ARN (Custom Resource)",
+      description: "AgentCore Gateway ARN",
     });
     new cdk.CfnOutput(this, "GatewayCognitoDomain", {
       value: this.gatewayCognito.domainPrefix,
-      description: "Gateway Cognito Domain Prefix (for streamlit_fgac_demo.py)",
+      description: "Gateway Cognito Domain Prefix (for streamlit app)",
     });
     new cdk.CfnOutput(this, "AgentCoreGatewayTargetName", {
       value: targetName,

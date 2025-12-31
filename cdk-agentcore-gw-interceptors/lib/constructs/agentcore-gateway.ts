@@ -32,19 +32,10 @@ export interface AgentCoreGatewayConstructProps {
   readonly gatewayClientId: string;
 
   /**
-   * Runtime認証用の Discovery URL
+   * Runtime 認証用 OAuth2 Credential Provider ARN
+   * AgentCoreIdentityConstruct で作成された credentialProviderArn を指定
    */
-  readonly runtimeDiscoveryUrl: string;
-
-  /**
-   * Runtime認証用の Client ID
-   */
-  readonly runtimeClientId: string;
-
-  /**
-   * Runtime認証用の Client Secret
-   */
-  readonly runtimeClientSecret: string;
+  readonly runtimeOAuth2CredentialProviderArn: string;
 
   /**
    * Runtime のスコープ文字列
@@ -77,9 +68,8 @@ export interface AgentCoreGatewayConstructProps {
  *
  * 以下のリソースを作成:
  * - AgentCore Gateway Role
- * - OAuth2 Credential Provider (Runtime用 AgentCore Identity)
- * - AgentCore Gateway (Custom Resource)
- * - Gateway Target (Custom Resource)
+ * - AgentCore Gateway (L1 Construct) with Interceptors
+ * - Gateway Target (L1 Construct)
  * - Synchronize Gateway Targets (Custom Resource)
  */
 export class AgentCoreGatewayConstruct extends Construct {
@@ -87,7 +77,6 @@ export class AgentCoreGatewayConstruct extends Construct {
   public readonly gatewayId: string;
   public readonly gatewayUrl: string;
   public readonly gatewayArn: string;
-  public readonly runtimeOAuth2CredentialProviderArn: string;
 
   constructor(
     scope: Construct,
@@ -101,9 +90,7 @@ export class AgentCoreGatewayConstruct extends Construct {
       targetName,
       gatewayDiscoveryUrl,
       gatewayClientId,
-      runtimeDiscoveryUrl,
-      runtimeClientId,
-      runtimeClientSecret,
+      runtimeOAuth2CredentialProviderArn,
       runtimeScopeString,
       requestInterceptor,
       responseInterceptor,
@@ -145,67 +132,6 @@ export class AgentCoreGatewayConstruct extends Construct {
         }),
       },
     });
-
-    // OAuth2 Credential Provider for Runtime (AgentCore Identity)
-    const runtimeOAuth2ProviderName = `runtime-oauth2-provider-${uniqueId}`;
-
-    const runtimeOAuth2ProviderConfigInput = {
-      customOauth2ProviderConfig: {
-        oauthDiscovery: {
-          discoveryUrl: runtimeDiscoveryUrl,
-        },
-        clientId: runtimeClientId,
-        clientSecret: runtimeClientSecret,
-      },
-    };
-
-    const runtimeOAuth2Provider = new cr.AwsCustomResource(
-      this,
-      "RuntimeOAuth2CredentialProvider",
-      {
-        onCreate: {
-          service: "bedrock-agentcore-control",
-          action: "CreateOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-            credentialProviderVendor: "CustomOauth2",
-            oauth2ProviderConfigInput: runtimeOAuth2ProviderConfigInput,
-          },
-          physicalResourceId: cr.PhysicalResourceId.fromResponse(
-            "credentialProviderArn"
-          ),
-        },
-        onUpdate: {
-          service: "bedrock-agentcore-control",
-          action: "UpdateOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-            credentialProviderVendor: "CustomOauth2",
-            oauth2ProviderConfigInput: runtimeOAuth2ProviderConfigInput,
-          },
-          physicalResourceId: cr.PhysicalResourceId.fromResponse(
-            "credentialProviderArn"
-          ),
-        },
-        onDelete: {
-          service: "bedrock-agentcore-control",
-          action: "DeleteOauth2CredentialProvider",
-          parameters: {
-            name: runtimeOAuth2ProviderName,
-          },
-        },
-        policy: cr.AwsCustomResourcePolicy.fromStatements([
-          new iam.PolicyStatement({
-            actions: ["bedrock-agentcore:*", "secretsmanager:*"],
-            resources: ["*"],
-          }),
-        ]),
-        logRetention: logs.RetentionDays.ONE_WEEK,
-      }
-    );
-
-    this.runtimeOAuth2CredentialProviderArn =
-      runtimeOAuth2Provider.getResponseField("credentialProviderArn");
 
     // Gateway の設定
     const gatewayName = `gateway-interceptor-${uniqueId}`;
@@ -296,9 +222,7 @@ export class AgentCoreGatewayConstruct extends Construct {
             credentialProviderType: "OAUTH",
             credentialProvider: {
               oauthCredentialProvider: {
-                providerArn: runtimeOAuth2Provider.getResponseField(
-                  "credentialProviderArn"
-                ),
+                providerArn: runtimeOAuth2CredentialProviderArn,
                 scopes: [runtimeScopeString],
               },
             },
