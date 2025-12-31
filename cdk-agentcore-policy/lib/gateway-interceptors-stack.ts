@@ -32,7 +32,7 @@ import {
  *
  * ============================================================================
  */
-export class GatewayInterceptorStack extends cdk.Stack {
+export class GatewayPolicyStack extends cdk.Stack {
   // Cognito
   public readonly gatewayCognito: GatewayCognitoConstruct;
   public readonly runtimeCognito: RuntimeCognitoConstruct;

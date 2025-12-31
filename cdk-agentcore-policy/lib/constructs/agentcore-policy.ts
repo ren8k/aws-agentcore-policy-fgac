@@ -57,7 +57,8 @@ export class AgentCorePolicyConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { uniqueId, policyEngineId, gatewayArn, targetName, dependsOn } = props;
+    const { uniqueId, policyEngineId, gatewayArn, targetName, dependsOn } =
+      props;
 
     const sanitizedUniqueId = uniqueId.replace(/-/g, "_");
 
@@ -114,7 +115,7 @@ export class AgentCorePolicyConstruct extends Construct {
                   statement: policyDef.cedarStatement,
                 },
               },
-              validationMode: "IGNORE_ALL_FINDINGS",
+              validationMode: "FAIL_ON_ANY_FINDINGS",
             },
             physicalResourceId: cr.PhysicalResourceId.fromResponse("policyId"),
           },
@@ -130,7 +131,7 @@ export class AgentCorePolicyConstruct extends Construct {
                   statement: policyDef.cedarStatement,
                 },
               },
-              validationMode: "IGNORE_ALL_FINDINGS",
+              validationMode: "FAIL_ON_ANY_FINDINGS",
             },
           },
           onDelete: {
