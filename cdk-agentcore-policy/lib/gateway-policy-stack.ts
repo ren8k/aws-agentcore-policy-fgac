@@ -12,7 +12,7 @@ import {
 
 /**
  * ============================================================================
- * GatewayPolicyStack (旧名: GatewayInterceptorStack)
+ * GatewayPolicyStack
  *
  * このスタックは以下のリソースを作成します：
  *
