@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/gateway-interceptors.ts",
+  "app": "npx ts-node --prefer-ts-exts bin/gateway-custom-claim.ts",
   "watch": {
     "include": ["**"],
     "exclude": [

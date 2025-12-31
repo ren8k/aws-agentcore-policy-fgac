@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
-import { GatewayInboundAuthCustomClaimStack } from "../lib/gateway-interceptors-stack";
+import { GatewayInboundAuthCustomClaimStack } from "../lib/gateway-custom-claim-stack";
 
 const app = new cdk.App();
 new GatewayInboundAuthCustomClaimStack(app, "AgentCoreCustomClaimsStack9", {
