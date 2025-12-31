@@ -144,23 +144,9 @@ export class AgentCoreGatewayConstruct extends Construct {
               effect: iam.Effect.ALLOW,
               actions: [
                 "bedrock-agentcore:*",
-                "bedrock:*",
-                "agent-credential-provider:*",
                 "iam:PassRole",
                 "secretsmanager:GetSecretValue",
                 "lambda:InvokeFunction",
-              ],
-              resources: ["*"],
-            }),
-            // Policy Engine トレースを CloudWatch Logs に記録するための権限
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-                "logs:DescribeLogGroups",
-                "logs:DescribeLogStreams",
               ],
               resources: ["*"],
             }),

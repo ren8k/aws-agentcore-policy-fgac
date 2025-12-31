@@ -29,7 +29,6 @@ import {
  *    - Admin Policy: 全アクション許可（role=admin）
  *    - User Policy: retrieve_doc のみ許可（role=user）
  *
- * NOTE: Interceptor Lambda は削除され、AgentCore Policy で FGAC を実現
  *
  * ============================================================================
  */
