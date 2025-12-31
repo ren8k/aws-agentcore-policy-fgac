@@ -30,7 +30,7 @@ import {
  *
  * ============================================================================
  */
-export class GatewayInboundAuthCustomClaimsStack extends cdk.Stack {
+export class GatewayInboundAuthCustomClaimStack extends cdk.Stack {
   // Cognito
   public readonly gatewayCognito: GatewayCognitoConstruct;
   public readonly runtimeCognito: RuntimeCognitoConstruct;
