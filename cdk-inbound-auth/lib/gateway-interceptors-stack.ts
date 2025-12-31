@@ -146,8 +146,6 @@ export class GatewayInterceptorStack extends cdk.Stack {
             },
           },
         ],
-        // Policy Engine は使用しない
-        // policyEngineConfig: undefined,
       }
     );
 
