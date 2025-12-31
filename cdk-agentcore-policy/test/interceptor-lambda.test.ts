@@ -1,9 +1,9 @@
 // import * as cdk from 'aws-cdk-lib/core';
 // import { Template } from 'aws-cdk-lib/assertions';
-// import * as InterceptorLambda from '../lib/gateway-interceptors-stack';
+// import * as InterceptorLambda from '../lib/gateway-policy-stack';
 
 // example test. To run these tests, uncomment this file along with the
-// example resource in lib/gateway-interceptors-stack.ts
+// example resource in lib/gateway-policy-stack.ts
 test("SQS Queue Created", () => {
   //   const app = new cdk.App();
   //     // WHEN

@@ -1,8 +1,8 @@
 {
-  "name": "gateway-interceptors",
+  "name": "gateway-policy",
   "version": "0.1.0",
   "bin": {
-    "gateway-interceptors": "bin/gateway-interceptors.js"
+    "gateway-policy": "bin/gateway-policy.js"
   },
   "scripts": {
     "build": "tsc",
