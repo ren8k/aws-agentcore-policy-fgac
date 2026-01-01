@@ -95,8 +95,6 @@ export class GatewayInterceptorStack extends cdk.Stack {
       "InterceptorLambdasGroup",
       {
         targetName,
-        resourceServerId:
-          this.gatewayCognito.resourceServer.userPoolResourceServerId,
         jwksUrl: `https://cognito-idp.${this.region}.amazonaws.com/${this.gatewayCognito.userPool.userPoolId}/.well-known/jwks.json`,
         clientId: this.gatewayCognito.userPoolClient.userPoolClientId,
       }

@@ -12,6 +12,16 @@ CLIENT_ID = os.environ["CLIENT_ID"]
 with urllib.request.urlopen(JWKS_URL) as f:
     keys = json.loads(f.read().decode("utf-8"))["keys"]
 
+# ============================================
+# ロールベースのアクセス制御設定
+# request/index.py と同じ設定
+# ============================================
+ROLE_PERMISSIONS = {
+    "admin": ["*"],  # 全ツール許可
+    "user": ["retrieve_doc"],  # retrieve_doc のみ許可
+    # guest やその他のロールは許可なし
+}
+
 
 def decode_jwt_payload(token):
     headers = jwt.get_unverified_headers(token)
@@ -32,23 +42,23 @@ def decode_jwt_payload(token):
     return claims
 
 
-def filter_tools(tools, scopes):
-    """Filter tools based on user scopes."""
-    if not scopes:
+def filter_tools(tools: list, role: str) -> list:
+    """ロールに基づいてツールをフィルタリング"""
+    allowed_tools = ROLE_PERMISSIONS.get(role, [])
+    if not allowed_tools:
         return []
+
+    # "*" は全ツール許可
+    if "*" in allowed_tools:
+        return tools
+
     filtered = []
     for tool in tools:
         name = tool.get("name", "")
-        # Skip system-generated MCP tools without target separator
-        if "___" not in name:
-            continue
-        target, action = name.split("___", 1)
-        for scope in scopes:
-            # Remove resource server prefix to get actual scope
-            actual = scope.split("/")[-1] if "/" in scope else scope
-            if actual == target or actual == f"{target}:{action}":
-                filtered.append(tool)
-                break
+        # Tool names are of the form: <target>___<toolName>
+        tool_name = name.split("___")[-1] if "___" in name else name
+        if tool_name in allowed_tools:
+            filtered.append(tool)
     return filtered
 
 
@@ -74,12 +84,12 @@ def lambda_handler(event, context):
         try:
             token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
             claims = decode_jwt_payload(token)
-            scopes = claims.get("scope", "").split()
+            role = claims.get("role", "guest")
 
-            print(f"[RESPONSE_INTERCEPTOR] Scopes: {scopes}")
+            print(f"[RESPONSE_INTERCEPTOR] Role: {role}")
             print(f"[RESPONSE_INTERCEPTOR] Tools before filter: {[t.get('name') for t in tools]}")
 
-            filtered = filter_tools(tools, scopes)
+            filtered = filter_tools(tools, role)
             print(f"[RESPONSE_INTERCEPTOR] Tools after filter: {[t.get('name') for t in filtered]}")
 
             filtered_body = body.copy()

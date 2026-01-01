@@ -30,6 +30,16 @@ MCP_PROTOCOL_METHODS = {
     "completion/complete",  # Completion
 }
 
+# ============================================
+# ロールベースのアクセス制御設定
+# agentcore-policy.ts の Cedar Policy と同等のロジック
+# ============================================
+ROLE_PERMISSIONS = {
+    "admin": ["*"],  # 全ツール許可
+    "user": ["retrieve_doc"],  # retrieve_doc のみ許可
+    # guest やその他のロールは許可なし
+}
+
 
 def decode_jwt_payload(token):
     headers = jwt.get_unverified_headers(token)
@@ -50,12 +60,16 @@ def decode_jwt_payload(token):
     return claims
 
 
-def check_authorization(scopes, tool_name):
-    if not scopes:
+def check_authorization(role: str, tool_name: str) -> bool:
+    """ロールに基づいてツールの実行可否を判断"""
+    allowed_tools = ROLE_PERMISSIONS.get(role, [])
+    if not allowed_tools:
         return False
-    # Check if full access or specific tool permission is in scopes
-    actual_scopes = [s.split("/", 1)[1] if "/" in s else s for s in scopes.split()]
-    return TARGET_NAME in actual_scopes or f"{TARGET_NAME}:{tool_name}" in actual_scopes
+    # "*" は全ツールアクセス可能
+    if "*" in allowed_tools:
+        return True
+    # 特定のツールが許可されているかチェック
+    return tool_name in allowed_tools
 
 
 def extract_tool_name(body):
@@ -115,11 +129,13 @@ def lambda_handler(event, context):
     try:
         token = auth.replace("Bearer ", "")
         claims = decode_jwt_payload(token)
-        scopes = claims.get("scope", "")
+
+        # カスタムクレームから role を取得
+        role = claims.get("role", "guest")
         method = body.get("method", "")
         tool_name = extract_tool_name(body)
 
-        print(f"[REQUEST_INTERCEPTOR] Scopes from token: {scopes}")
+        print(f"[REQUEST_INTERCEPTOR] Role: {role}")
         print(f"[REQUEST_INTERCEPTOR] Tool name: {tool_name}")
         print(f"[REQUEST_INTERCEPTOR] TARGET_NAME: {TARGET_NAME}")
 
@@ -130,15 +146,15 @@ def lambda_handler(event, context):
             )
             return build_pass_through(body)
 
-        authorized = check_authorization(scopes, tool_name)
+        authorized = check_authorization(role, tool_name)
         print(f"[REQUEST_INTERCEPTOR] Authorization check: {authorized}")
 
         if not tool_name or not authorized:
-            print(f"[REQUEST_INTERCEPTOR] Denied: {tool_name}")
+            print(f"[REQUEST_INTERCEPTOR] Denied: {tool_name} (role={role})")
             return build_error_response(f"Insufficient permission: {tool_name}", body)
     except Exception as e:
         print(f"[REQUEST_INTERCEPTOR] Error: {e}")
         return build_error_response(f"Invalid token: {e}", body)
 
-    print(f"[REQUEST_INTERCEPTOR] Allowed: {tool_name}")
+    print(f"[REQUEST_INTERCEPTOR] Allowed: {tool_name} (role={role})")
     return build_pass_through(body)

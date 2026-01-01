@@ -13,11 +13,6 @@ export interface InterceptorLambdaConstructProps {
   readonly targetName: string;
 
   /**
-   * Resource Server ID（Request Interceptor Lambda で使用）
-   */
-  readonly resourceServerId: string;
-
-  /**
    * JWKS URL（JWTトークン検証用）
    */
   readonly jwksUrl: string;
@@ -48,7 +43,7 @@ export class InterceptorLambdaConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { targetName, resourceServerId, jwksUrl, clientId } = props;
+    const { targetName, jwksUrl, clientId } = props;
 
     // Lambda Layer for dependencies
     this.depsLayer = new lambda.LayerVersion(this, "DepsLayer", {
@@ -66,6 +61,7 @@ export class InterceptorLambdaConstruct extends Construct {
     });
 
     // Request Interceptor Lambda
+    // Uses custom claims (role, allowed_tools) for authorization
     this.requestInterceptor = new lambda.Function(this, "RequestInterceptor", {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "index.lambda_handler",
@@ -75,7 +71,6 @@ export class InterceptorLambdaConstruct extends Construct {
       description: `[REQUEST] AgentCore Gateway Interceptor for ${targetName}`,
       environment: {
         TARGET_NAME: targetName,
-        RESOURCE_SERVER_ID: resourceServerId,
         JWKS_URL: jwksUrl,
         CLIENT_ID: clientId,
       },
