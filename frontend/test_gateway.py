@@ -94,6 +94,9 @@ def exchange_code_for_token(code: str) -> str:
     print(f"scope: {claims.get('scope')}")
     print(f"cognito:groups: {claims.get('cognito:groups')}")
     print("====================\n")
+    print("\n=== Token Claims (all) ===")
+    print(json.dumps(claims, indent=2, ensure_ascii=False))
+    print("====================\n")
 
     return token
 
