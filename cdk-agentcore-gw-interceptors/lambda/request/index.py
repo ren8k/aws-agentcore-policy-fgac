@@ -135,7 +135,7 @@ def lambda_handler(event, context):
         print(f"[REQUEST_INTERCEPTOR] TARGET_NAME: {TARGET_NAME}")
 
         # Allow MCP protocol methods and system tools without tool-level authorization
-        if method != "tool/list":
+        if method != "tools/call":
             print(f"[REQUEST_INTERCEPTOR] Pass through (protocol method: {method} or system tool: {tool_name})")
             return build_pass_through(body)
 
