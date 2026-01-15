@@ -1,34 +1,14 @@
 import json
 import os
-import time
-import urllib.request
 
-from jose import jwk, jwt
-from jose.utils import base64url_decode
+import jwt
 
 TARGET_NAME = os.environ["TARGET_NAME"]
 JWKS_URL = os.environ["JWKS_URL"]
 CLIENT_ID = os.environ["CLIENT_ID"]
 
-with urllib.request.urlopen(JWKS_URL) as f:
-    keys = json.loads(f.read().decode("utf-8"))["keys"]
-
-SYSTEM_TOOLS = {"x_amz_bedrock_agentcore_search"}
-
-# MCP protocol methods that should always be allowed (no tool authorization needed)
-# https://modelcontextprotocol.io/specification/2025-11-25/server
-MCP_PROTOCOL_METHODS = {
-    "initialize",  # Client initialization
-    "notifications/initialized",  # Notification after successful init
-    "ping",  # Keep-alive ping
-    "tools/list",  # List available tools
-    "resources/list",  # List resources
-    "resources/read",  # Read resource
-    "prompts/list",  # List prompts
-    "prompts/get",  # Get prompt
-    "logging/setLevel",  # Set logging level
-    "completion/complete",  # Completion
-}
+# JWKS クライアントを初期化（キーのキャッシュ機能付き）
+jwks_client = jwt.PyJWKClient(JWKS_URL)
 
 # ============================================
 # ロールベースのアクセス制御設定
@@ -41,22 +21,37 @@ ROLE_PERMISSIONS = {
 }
 
 
-def decode_jwt_payload(token):
-    headers = jwt.get_unverified_headers(token)
-    key = next((k for k in keys if k["kid"] == headers["kid"]), None)
-    if not key:
-        raise Exception("Public key not found")
+def decode_jwt_payload(token: str) -> dict:
+    """JWT トークンを検証してペイロードを取得する。
 
-    public_key = jwk.construct(key)
-    message, encoded_signature = token.rsplit(".", 1)
-    if not public_key.verify(message.encode("utf8"), base64url_decode(encoded_signature.encode("utf-8"))):
-        raise Exception("Signature verification failed")
+    Args:
+        token: Bearer トークンから抽出した JWT 文字列
 
-    claims = jwt.get_unverified_claims(token)
-    if time.time() > claims["exp"]:
-        raise Exception("Token expired")
-    if claims["client_id"] != CLIENT_ID or claims.get("token_use") != "access":
-        raise Exception("Invalid token")
+    Returns:
+        検証済みの JWT クレーム
+
+    Raises:
+        jwt.InvalidTokenError: トークンが無効な場合
+    """
+    # JWKS から署名キーを取得
+    signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+    # トークンを検証してデコード
+    claims = jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=["RS256"],
+        options={
+            "require": ["exp", "client_id", "token_use"],
+        },
+    )
+
+    # カスタムクレームの検証
+    if claims.get("client_id") != CLIENT_ID:
+        raise jwt.InvalidTokenError("Invalid client_id")
+    if claims.get("token_use") != "access":
+        raise jwt.InvalidTokenError("Invalid token_use")
+
     return claims
 
 
@@ -140,10 +135,8 @@ def lambda_handler(event, context):
         print(f"[REQUEST_INTERCEPTOR] TARGET_NAME: {TARGET_NAME}")
 
         # Allow MCP protocol methods and system tools without tool-level authorization
-        if method in MCP_PROTOCOL_METHODS or tool_name in SYSTEM_TOOLS:
-            print(
-                f"[REQUEST_INTERCEPTOR] Pass through (protocol method: {method} or system tool: {tool_name})"
-            )
+        if method != "tools/call":
+            print(f"[REQUEST_INTERCEPTOR] Pass through (protocol method: {method} or system tool: {tool_name})")
             return build_pass_through(body)
 
         authorized = check_authorization(role, tool_name)

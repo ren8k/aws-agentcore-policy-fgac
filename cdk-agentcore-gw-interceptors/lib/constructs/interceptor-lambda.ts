@@ -50,14 +50,16 @@ export class InterceptorLambdaConstruct extends Construct {
       code: lambda.Code.fromAsset(path.join(__dirname, "../../lambda/layer"), {
         bundling: {
           image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+          platform: "linux/arm64",
           command: [
             "bash",
             "-c",
-            "pip install -r requirements.txt -t /asset-output/python",
+            "pip install -r requirements.txt -t /asset-output/python --platform manylinux2014_aarch64 --only-binary=:all:",
           ],
         },
       }),
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_13],
+      compatibleArchitectures: [lambda.Architecture.ARM_64],
     });
 
     // Request Interceptor Lambda
@@ -67,6 +69,7 @@ export class InterceptorLambdaConstruct extends Construct {
       handler: "index.lambda_handler",
       code: lambda.Code.fromAsset(path.join(__dirname, "../../lambda/request")),
       layers: [this.depsLayer],
+      architecture: lambda.Architecture.ARM_64,
       timeout: cdk.Duration.seconds(30),
       description: `[REQUEST] AgentCore Gateway Interceptor for ${targetName}`,
       environment: {
@@ -87,6 +90,7 @@ export class InterceptorLambdaConstruct extends Construct {
           path.join(__dirname, "../../lambda/response")
         ),
         layers: [this.depsLayer],
+        architecture: lambda.Architecture.ARM_64,
         timeout: cdk.Duration.seconds(30),
         description: `[RESPONSE] AgentCore Gateway Interceptor for ${targetName}`,
         environment: {

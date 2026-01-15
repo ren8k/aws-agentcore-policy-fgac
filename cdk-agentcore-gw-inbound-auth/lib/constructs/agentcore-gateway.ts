@@ -77,7 +77,7 @@ export interface AgentCoreGatewayConstructProps {
  *
  * 以下のリソースを作成:
  * - AgentCore Gateway Role
- * - AgentCore Gateway (AwsCustomResource)
+ * - AgentCore Gateway (CfnGateway L1 Construct)
  * - Gateway Target (CfnGatewayTarget)
  * - Synchronize Gateway Targets (AwsCustomResource)
  *
@@ -156,15 +156,9 @@ export class AgentCoreGatewayConstruct extends Construct {
     // Gateway の設定
     this.gatewayName = `gateway-policy-${uniqueId}`;
 
-    // customJWTAuthorizer 設定
-    const customJWTAuthorizerConfig: Record<string, unknown> = {
-      discoveryUrl: gatewayDiscoveryUrl,
-      allowedClients: [gatewayClientId],
-      ...(customClaims && { customClaims }),
-    };
-
-    // AgentCore Gateway (AwsCustomResource)
-    const gatewayCreateParams: Record<string, unknown> = {
+    // AgentCore Gateway (CfnGateway L1 Construct)
+    // aws-cdk-lib@2.234.1 以降で customClaims がサポート
+    const agentCoreGateway = new bedrockagentcore.CfnGateway(this, "Gateway", {
       name: this.gatewayName,
       roleArn: this.gatewayRole.roleArn,
       protocolType: "MCP",
@@ -176,54 +170,18 @@ export class AgentCoreGatewayConstruct extends Construct {
       },
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
-        customJWTAuthorizer: customJWTAuthorizerConfig,
-      },
-      exceptionLevel: "DEBUG",
-    };
-
-    const gatewayUpdateParams: Record<string, unknown> = {
-      ...gatewayCreateParams,
-      gatewayIdentifier: new cr.PhysicalResourceIdReference(),
-    };
-
-    const agentCoreGateway = new cr.AwsCustomResource(this, "Gateway", {
-      onCreate: {
-        service: "bedrock-agentcore-control",
-        action: "CreateGateway",
-        parameters: gatewayCreateParams,
-        physicalResourceId: cr.PhysicalResourceId.fromResponse("gatewayId"),
-      },
-      onUpdate: {
-        service: "bedrock-agentcore-control",
-        action: "UpdateGateway",
-        parameters: gatewayUpdateParams,
-        physicalResourceId: cr.PhysicalResourceId.fromResponse("gatewayId"),
-      },
-      onDelete: {
-        service: "bedrock-agentcore-control",
-        action: "DeleteGateway",
-        parameters: {
-          gatewayIdentifier: new cr.PhysicalResourceIdReference(),
+        customJwtAuthorizer: {
+          discoveryUrl: gatewayDiscoveryUrl,
+          allowedClients: [gatewayClientId],
+          customClaims: customClaims,
         },
       },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ["bedrock-agentcore:*"],
-          resources: ["*"],
-        }),
-        // CreateGateway API は roleArn を渡すため iam:PassRole が必要
-        new iam.PolicyStatement({
-          actions: ["iam:PassRole"],
-          resources: [this.gatewayRole.roleArn],
-        }),
-      ]),
-      logRetention: logs.RetentionDays.ONE_WEEK,
-      timeout: cdk.Duration.minutes(5),
+      exceptionLevel: "DEBUG",
     });
 
-    this.gatewayId = agentCoreGateway.getResponseField("gatewayId");
-    this.gatewayUrl = agentCoreGateway.getResponseField("gatewayUrl");
-    this.gatewayArn = agentCoreGateway.getResponseField("gatewayArn");
+    this.gatewayId = agentCoreGateway.attrGatewayIdentifier;
+    this.gatewayUrl = agentCoreGateway.attrGatewayUrl;
+    this.gatewayArn = agentCoreGateway.attrGatewayArn;
 
     // Runtime ARN を encoded URL形式に変換
     const encodedRuntimeArn = cdk.Fn.join("", [
@@ -246,7 +204,7 @@ export class AgentCoreGatewayConstruct extends Construct {
       "GatewayTarget",
       {
         name: targetName,
-        gatewayIdentifier: this.gatewayId,
+        gatewayIdentifier: agentCoreGateway.attrGatewayIdentifier,
         targetConfiguration: {
           mcp: {
             mcpServer: {
@@ -281,7 +239,7 @@ export class AgentCoreGatewayConstruct extends Construct {
           service: "bedrock-agentcore-control",
           action: "SynchronizeGatewayTargets",
           parameters: {
-            gatewayIdentifier: this.gatewayId,
+            gatewayIdentifier: agentCoreGateway.attrGatewayIdentifier,
             targetIdList: [this.gatewayTarget.attrTargetId],
           },
           physicalResourceId: cr.PhysicalResourceId.of(

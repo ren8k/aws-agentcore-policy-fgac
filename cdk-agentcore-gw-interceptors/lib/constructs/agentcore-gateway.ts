@@ -155,34 +155,32 @@ export class AgentCoreGatewayConstruct extends Construct {
         },
       },
       exceptionLevel: "DEBUG",
+      // InterceptorConfigurations は aws-cdk-lib@2.234.1 以降で L1 プロパティとしてサポート
+      interceptorConfigurations: [
+        {
+          interceptor: {
+            lambda: {
+              arn: requestInterceptor.functionArn,
+            },
+          },
+          interceptionPoints: ["REQUEST"],
+          inputConfiguration: {
+            passRequestHeaders: true,
+          },
+        },
+        {
+          interceptor: {
+            lambda: {
+              arn: responseInterceptor.functionArn,
+            },
+          },
+          interceptionPoints: ["RESPONSE"],
+          inputConfiguration: {
+            passRequestHeaders: false,
+          },
+        },
+      ],
     });
-
-    // InterceptorConfigurations は現在の aws-cdk-lib の型定義に含まれていないため
-    // addPropertyOverride を使用して追加
-    agentCoreGateway.addPropertyOverride("InterceptorConfigurations", [
-      {
-        Interceptor: {
-          Lambda: {
-            Arn: requestInterceptor.functionArn,
-          },
-        },
-        InterceptionPoints: ["REQUEST"],
-        InputConfiguration: {
-          PassRequestHeaders: true,
-        },
-      },
-      {
-        Interceptor: {
-          Lambda: {
-            Arn: responseInterceptor.functionArn,
-          },
-        },
-        InterceptionPoints: ["RESPONSE"],
-        InputConfiguration: {
-          PassRequestHeaders: false,
-        },
-      },
-    ]);
 
     this.gatewayId = agentCoreGateway.attrGatewayIdentifier;
     this.gatewayUrl = agentCoreGateway.attrGatewayUrl;
