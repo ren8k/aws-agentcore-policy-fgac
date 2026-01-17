@@ -240,8 +240,8 @@ if __name__ == "__main__":
         logout()
         sys.exit(0)
 
-    # Test: Login as user1 (admin) or user2 (user) to see different behavior
+    # Test: Login as admin or user to see different behavior
     # Scopes are determined server-side by Pre Token Lambda based on user email
-    # admin (user1@example.com): all tools work (retrieve_doc, get_query_log, sync_data_source, delete_data_source)
-    # user (user2@example.com): only retrieve_doc works
+    # admin (admin@example.com): all tools work (retrieve_doc, get_query_log, sync_data_source, delete_data_source)
+    # user (user@example.com): only retrieve_doc works
     test_gateway("RAG Operations Test (admin, user)")
