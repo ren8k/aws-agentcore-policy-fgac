@@ -5,7 +5,7 @@
 > [!NOTE]
 > Zenn の記事で利用している検証コードです。是非以下もご覧下さい！
 >
-> [AgentCore Gateway で MCP サーバー・ツールのアクセス制御を実現する 3 つの方法 (徹底検証)](https://zenn.dev/aws_japan/articles/003-bedrock-agentcore-policy-fgac)
+> [AgentCore Gateway で MCP サーバー・ツールのアクセス制御を実現する 3 つの方法の徹底比較](https://zenn.dev/aws_japan/articles/003-bedrock-agentcore-policy-fgac)
 
 ## 概要
 
@@ -26,7 +26,7 @@ AgentCore Gateway では、以下の 3 つの方法で MCP サーバー・ツー
 ├── cdk-agentcore-gw-inbound-auth/  # Inbound Authorization (customClaims)
 ├── cdk-agentcore-policy/           # AgentCore Policy (Cedar)
 ├── cdk-agentcore-gw-interceptors/  # Gateway Interceptors (Lambda)
-├── frontend/                       # テストスクリプト
+├── scripts/                        # テストスクリプト
 │   ├── test_gateway.py             # 疎通確認スクリプト
 │   └── test_gateway_latency.py     # レイテンシー計測スクリプト
 └── assets/                         # アーキテクチャ図
@@ -172,7 +172,7 @@ REGION=us-east-1
 `test_gateway.py` を実行すると、ブラウザで Cognito ログイン画面が開きます。ログイン後、各ツールの実行結果が表示されます。
 
 ```bash
-cd frontend
+cd scripts
 uv sync
 uv run python test_gateway.py
 ```
@@ -194,7 +194,7 @@ uv run python test_gateway.py logout
 `test_gateway_latency.py` を実行すると、`tools/list` の呼び出しを 50 回実行し、平均レイテンシーと標準偏差を計測します。
 
 ```bash
-cd frontend
+cd scripts
 uv run python test_gateway_latency.py
 ```
 
